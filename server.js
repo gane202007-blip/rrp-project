@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // ================= MIDDLEWARE =================
 app.use(bodyParser.json());
-
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
     secret: 'rrp-secret',
     resave: false,
@@ -47,7 +47,7 @@ app.get('/', (req, res) => {
 });
 
 // 👉 Serve static files AFTER root
-app.use(express.static('public'));
+app.use(express.static(path.join(_dirname,'public')));
 
 // ================= AUTH =================
 
