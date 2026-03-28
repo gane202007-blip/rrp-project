@@ -1,0 +1,19 @@
+{
+  "name": "rrp-1",
+  "version": "1.0.0",
+  "description": "Recycling Plastic Waste Project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Ganesh",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "mongoose": "^9.3.2",
+    "sqlite3": "^6.0.1"
+  }
+}
