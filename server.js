@@ -47,7 +47,7 @@ app.get('/', (req, res) => {
 });
 
 // 👉 Serve static files AFTER root
-app.use(express.static(path.join(_dirname,'public')));
+app.use(express.static(path.join(__dirname,'public')));
 
 // ================= AUTH =================
 
