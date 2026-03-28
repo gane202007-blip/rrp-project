@@ -165,5 +165,5 @@ app.get('/download', checkAuth, checkAdmin, async (req, res) => {
 
 // ================= START SERVER =================
 app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
