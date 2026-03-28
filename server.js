@@ -11,7 +11,10 @@ const PORT = process.env.PORT || 3000;
 
 // ================= MIDDLEWARE =================
 app.use(bodyParser.json());
+
+// ✅ STATIC FILES (ONLY ONCE)
 app.use(express.static(path.join(__dirname, 'public')));
+
 app.use(session({
     secret: 'rrp-secret',
     resave: false,
@@ -21,7 +24,7 @@ app.use(session({
 // ================= MONGODB =================
 mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log("MongoDB Connected"))
-.catch(err => console.log(err));
+.catch(err => console.error("MongoDB Error:", err));
 
 // ================= MODELS =================
 const User = mongoose.model('User', {
@@ -41,13 +44,10 @@ const Collection = mongoose.model('Collection', {
 
 // ================= ROUTES =================
 
-// 👉 FORCE LOGIN PAGE
+// Root → Login Page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
-
-// 👉 Serve static files AFTER root
-app.use(express.static(path.join(__dirname,'public')));
 
 // ================= AUTH =================
 
@@ -65,26 +65,33 @@ app.post('/signup', async (req, res) => {
         });
 
         res.send("Signup successful");
-    } catch {
+    } catch (err) {
+        console.error(err);
         res.status(500).send("User already exists");
     }
 });
 
 // Login
 app.post('/login', async (req, res) => {
-    const { email, password } = req.body;
+    try {
+        const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).send("User not found");
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send("User not found");
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).send("Wrong password");
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) return res.status(401).send("Wrong password");
 
-    req.session.user = user;
+        req.session.user = user;
 
-    res.send({ message: "Login success", role: user.role });
+        res.send({ message: "Login success", role: user.role });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Login error");
+    }
 });
-// Get logged-in user
+
+// Get logged user
 app.get('/me', (req, res) => {
     if (!req.session.user) {
         return res.json({ loggedIn: false });
@@ -99,9 +106,11 @@ app.get('/me', (req, res) => {
 
 // Logout
 app.get('/logout', (req, res) => {
-    req.session.destroy();
-    res.redirect('/login.html');
+    req.session.destroy(() => {
+        res.redirect('/login.html');
+    });
 });
+
 // ================= MIDDLEWARE =================
 
 function checkAuth(req, res, next) {
@@ -122,45 +131,66 @@ function checkAdmin(req, res, next) {
 
 // Add data
 app.post('/add', checkAuth, async (req, res) => {
-    const { plastic_type, weight, collection_point, date } = req.body;
+    try {
+        const { plastic_type, weight, collection_point, date } = req.body;
 
-    await Collection.create({
-        user_id: req.session.user._id,
-        plastic_type,
-        weight,
-        collection_point,
-        date
-    });
+        await Collection.create({
+            user_id: req.session.user._id,
+            plastic_type,
+            weight,
+            collection_point,
+            date
+        });
 
-    res.send("Data added successfully");
+        res.send("Data added successfully");
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error adding data");
+    }
 });
 
 // Get data
 app.get('/data', checkAuth, async (req, res) => {
-    let data;
+    try {
+        let data;
 
-    if (req.session.user.role === 'admin') {
-        data = await Collection.find();
-    } else {
-        data = await Collection.find({ user_id: req.session.user._id });
+        if (req.session.user.role === 'admin') {
+            data = await Collection.find();
+        } else {
+            data = await Collection.find({ user_id: req.session.user._id });
+        }
+
+        res.json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error fetching data");
     }
-
-    res.json(data);
 });
 
 // Download CSV
 app.get('/download', checkAuth, checkAdmin, async (req, res) => {
-    const data = await Collection.find();
+    try {
+        const data = await Collection.find();
 
-    let csv = "Type,Weight,Point,Date\n";
+        let csv = "Type,Weight,Point,Date\n";
 
-    data.forEach(d => {
-        csv += `${d.plastic_type},${d.weight},${d.collection_point},${d.date}\n`;
-    });
+        data.forEach(d => {
+            csv += `${d.plastic_type},${d.weight},${d.collection_point},${d.date}\n`;
+        });
 
-    fs.writeFileSync('report.csv', csv);
+        fs.writeFileSync('report.csv', csv);
 
-    res.download('report.csv');
+        res.download('report.csv');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Download error");
+    }
+});
+
+// ================= GLOBAL ERROR HANDLER =================
+app.use((err, req, res, next) => {
+    console.error("SERVER ERROR:", err);
+    res.status(500).send("Something went wrong");
 });
 
 // ================= START SERVER =================
