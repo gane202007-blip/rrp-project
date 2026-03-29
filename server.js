@@ -1,202 +1,201 @@
-// ================= AUTH =================
+// ================= IMPORTS =================
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const session = require('express-session');
+const bcrypt = require('bcrypt');
+const fs = require('fs');
+const path = require('path');
 
-// LOGIN
-async function login() {
-    try {
-        const res = await fetch('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: document.getElementById('email').value,
-                password: document.getElementById('password').value
-            })
-        });
+const app = express();
+const PORT = 3000;
 
-        const data = await res.json();
 
-        alert(data.message);
+// ================= MIDDLEWARE =================
+app.use(bodyParser.json());
+app.use(express.static('public'));
 
-        if (res.ok) {
-            if (data.role === 'admin') {
-                window.location = 'dashboard.html';
-            } else {
-                window.location = 'index.html';
-            }
-        }
-    } catch (err) {
-        alert("Login error");
-        console.error(err);
+app.use(session({
+    secret: 'rrp-secret',
+    resave: false,
+    saveUninitialized: false
+}));
+
+
+// ================= DATABASE =================
+mongoose.connect('mongodb://127.0.0.1:27017/rrp')
+    .then(() => console.log("✅ MongoDB Connected"))
+    .catch(err => console.log("❌ DB Error:", err));
+
+
+// ================= MODELS =================
+
+// USER MODEL
+const userSchema = new mongoose.Schema({
+    name: String,
+    email: { type: String, unique: true },
+    password: String,
+    role: { type: String, default: 'user' }
+});
+
+const User = mongoose.model('User', userSchema);
+
+
+// COLLECTION MODEL
+const collectionSchema = new mongoose.Schema({
+    user_id: mongoose.Schema.Types.ObjectId,
+    plastic_type: String,
+    weight: Number,
+    collection_point: String,
+    date: String
+});
+
+const Collection = mongoose.model('Collection', collectionSchema);
+
+
+// ================= AUTH MIDDLEWARE =================
+
+function checkAuth(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).send("❌ Please login first");
     }
+    next();
 }
 
+function checkAdmin(req, res, next) {
+    if (req.session.user.role !== 'admin') {
+        return res.status(403).send("❌ Admin access only");
+    }
+    next();
+}
+
+
+// ================= AUTH ROUTES =================
 
 // SIGNUP
-async function signup() {
+app.post('/signup', async (req, res) => {
     try {
-        const res = await fetch('/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: document.getElementById('name').value,
-                email: document.getElementById('email2').value,
-                password: document.getElementById('password2').value
-            })
+        const { name, email, password } = req.body;
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await User.create({
+            name,
+            email,
+            password: hashedPassword
         });
 
-        const text = await res.text();
-        alert(text);
+        res.send({ message: "✅ Signup successful" });
+
     } catch (err) {
-        alert("Signup error");
-        console.error(err);
+        res.status(500).send({ message: "❌ User already exists" });
     }
-}
+});
 
 
-// ================= ADD DATA =================
+// LOGIN
+app.post('/login', async (req, res) => {
+    const { email, password } = req.body;
 
-const form = document.getElementById('form');
+    const user = await User.findOne({ email });
 
-if (form) {
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    if (!user) {
+        return res.status(400).send({ message: "❌ User not found" });
+    }
 
-        try {
-            const res = await fetch('/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    plastic_type: document.getElementById('type').value,
-                    weight: parseFloat(document.getElementById('weight').value),
-                    collection_point: document.getElementById('point').value,
-                    date: document.getElementById('date').value
-                })
-            });
+    const isMatch = await bcrypt.compare(password, user.password);
 
-            const text = await res.text();
-            alert("✅ " + text);
+    if (!isMatch) {
+        return res.status(401).send({ message: "❌ Wrong password" });
+    }
 
-            form.reset();
+    req.session.user = user;
 
-        } catch (err) {
-            alert("Error adding data");
-            console.error(err);
-        }
+    res.send({
+        message: "✅ Login successful",
+        role: user.role
     });
-}
+});
 
 
-// ================= DASHBOARD =================
+// LOGOUT
+app.get('/logout', (req, res) => {
+    req.session.destroy(() => {
+        res.send({ message: "Logged out" });
+    });
+});
 
-let pieChart = null;
-let barChart = null;
 
-async function loadDashboard() {
+// ================= COLLECTION ROUTES =================
+
+// ADD DATA
+app.post('/add', checkAuth, async (req, res) => {
     try {
-        const res = await fetch('/data');
-        let data = await res.json();
+        const { plastic_type, weight, collection_point, date } = req.body;
 
-        // DATE FILTER
-        const start = document.getElementById('startDate')?.value;
-        const end = document.getElementById('endDate')?.value;
+        await Collection.create({
+            user_id: req.session.user._id,
+            plastic_type,
+            weight,
+            collection_point,
+            date
+        });
 
-        if (start && end) {
-            data = data.filter(d => d.date >= start && d.date <= end);
+        res.send({ message: "✅ Data added successfully" });
+
+    } catch (err) {
+        res.status(500).send({ message: "❌ Error adding data" });
+    }
+});
+
+
+// GET DATA (ROLE BASED)
+app.get('/data', checkAuth, async (req, res) => {
+    try {
+        let data;
+
+        if (req.session.user.role === 'admin') {
+            data = await Collection.find();
+        } else {
+            data = await Collection.find({
+                user_id: req.session.user._id
+            });
         }
 
-        let total = 0;
-        let types = { PET: 0, HDPE: 0, LDPE: 0, Mixed: 0 };
-        let monthly = {};
+        res.json(data);
+
+    } catch (err) {
+        res.status(500).send({ message: "❌ Error fetching data" });
+    }
+});
+
+
+// ================= DOWNLOAD REPORT =================
+
+app.get('/download', checkAuth, checkAdmin, async (req, res) => {
+    try {
+        const data = await Collection.find();
+
+        let csv = "Type,Weight,Point,Date\n";
 
         data.forEach(d => {
-            total += d.weight;
-
-            if (types[d.plastic_type] !== undefined) {
-                types[d.plastic_type] += d.weight;
-            }
-
-            // GROUP BY MONTH
-            const month = d.date.substring(0, 7);
-
-            if (!monthly[month]) monthly[month] = 0;
-            monthly[month] += d.weight;
+            csv += `${d.plastic_type},${d.weight},${d.collection_point},${d.date}\n`;
         });
 
-        // UPDATE STATS
-        document.getElementById('total').innerText = total.toFixed(2);
-        document.getElementById('bricks').innerText = Math.floor(total * 10);
-        document.getElementById('road').innerText = (total * 2).toFixed(2);
-        document.getElementById('co2').innerText = (total * 1.5).toFixed(2);
+        const filePath = path.join(__dirname, 'report.csv');
 
-        // DESTROY OLD CHARTS (IMPORTANT)
-        if (pieChart) pieChart.destroy();
-        if (barChart) barChart.destroy();
+        fs.writeFileSync(filePath, csv);
 
-        // PIE CHART
-        pieChart = new Chart(document.getElementById('chart'), {
-            type: 'pie',
-            data: {
-                labels: Object.keys(types),
-                datasets: [{
-                    data: Object.values(types)
-                }]
-            }
-        });
-
-        // BAR CHART
-        barChart = new Chart(document.getElementById('barChart'), {
-            type: 'bar',
-            data: {
-                labels: Object.keys(monthly),
-                datasets: [{
-                    label: 'Plastic Collected (kg)',
-                    data: Object.values(monthly)
-                }]
-            }
-        });
-
-        // INSIGHTS
-        showInsights(data, total, types);
+        res.download(filePath);
 
     } catch (err) {
-        console.error("Dashboard error:", err);
+        res.status(500).send({ message: "❌ Error generating report" });
     }
-}
+});
 
 
-// ================= INSIGHTS =================
+// ================= START SERVER =================
 
-function showInsights(data, total, types) {
-
-    if (data.length === 0) {
-        document.getElementById('topType').innerText = "N/A";
-        document.getElementById('avgDay').innerText = "0";
-        return;
-    }
-
-    // TOP TYPE
-    let maxType = Object.keys(types).reduce((a, b) =>
-        types[a] > types[b] ? a : b
-    );
-
-    // AVG PER DAY
-    let uniqueDays = new Set(data.map(d => d.date)).size;
-    let avg = (total / uniqueDays).toFixed(2);
-
-    // UPDATE UI
-    document.getElementById('topType').innerText = maxType;
-    document.getElementById('avgDay').innerText = avg;
-}
-
-
-// ================= DOWNLOAD =================
-
-function download() {
-    window.location.href = '/download';
-}
-
-
-// ================= AUTO LOAD =================
-
-if (document.getElementById('chart')) {
-    loadDashboard();
-}
+app.listen(PORT, () => {
+    console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
