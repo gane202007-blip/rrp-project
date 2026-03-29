@@ -5,7 +5,7 @@ const MongoStore = require('connect-mongo');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const fs = require('fs');
-const cors = require('cors');
+
 
 const app = express();
 
@@ -16,10 +16,6 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(cors({
-    origin: true,
-    credentials: true
-}));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
