@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 
 // ================= MIDDLEWARE =================
@@ -23,7 +23,7 @@ app.use(session({
 
 
 // ================= DATABASE =================
-mongoose.connect('mongodb://127.0.0.1:27017/rrp')
+mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => console.log("❌ DB Error:", err));
 
