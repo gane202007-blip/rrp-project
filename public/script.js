@@ -1,4 +1,15 @@
 // ================= AUTH CHECK (RUN ON ALL PAGES) =================
+async function checkLogin() {
+    const res = await fetch('/data', {
+        credentials: 'include'
+    });
+
+    if (res.status === 401) {
+        window.location.href = 'login.html';
+    }
+}
+
+checkLogin();
 (async () => {
     try {
         const res = await fetch('/me');
