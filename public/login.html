@@ -45,26 +45,25 @@
 async function login() {
     const res = await fetch('/login', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',   // ✅ IMPORTANT
         body: JSON.stringify({
-            email: email.value,
-            password: password.value
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value
         })
     });
 
-    const text = await res.text();
+    if (!res.ok) {
+        alert("Login failed");
+        return;
+    }
 
-    try {
-        const data = JSON.parse(text);
-        alert(data.message);
+    const data = await res.json();
 
-        if (data.role === 'admin') {
-            window.location = 'dashboard.html';
-        } else {
-            window.location = 'index.html';
-        }
-    } catch {
-        alert(text);
+    if (data.role === 'admin') {
+        window.location.href = 'dashboard.html';
+    } else {
+        window.location.href = 'index.html';
     }
 }
 
